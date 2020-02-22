@@ -11,7 +11,13 @@ today = date.today()
 conn = sqlite3.connect('data.db') #Connecting to database
 c = conn.cursor()
 
-previously_logged_events_1920_df = pd.read_sql_query("SELECT * FROM events_1920", conn)
+c.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='events_1920'")
+
+#if the count is 1, then table exists
+if c.fetchone()[0]==1 :
+	previously_logged_events_1920_df = pd.read_sql_query("SELECT * FROM events_1920", conn)
+else:
+	previously_logged_events_1920_df = pd.DataFrame()
 
 event_request_1920 = requests.get(
     'https://theorangealliance.org/api/event?season_key=1920',
@@ -34,31 +40,46 @@ events_1920_df["start_date"] = events_1920_df["start_date"].apply(date_parse)
 
 events_1920_df = events_1920_df[["event_key", "region_key", "event_code", "event_type_key", "event_name", "start_date", "city", "venue", "website"]]
 events_1920_df = events_1920_df.sort_values("start_date")
+
+future_events_1920_df = events_1920_df.loc[events_1920_df.start_date >= str(today)]
 events_1920_df = events_1920_df.drop(events_1920_df[events_1920_df.start_date >= str(today)].index)
 
 events_1920_df = events_1920_df.reset_index()
 events_1920_df = events_1920_df.drop(columns=["index"])
 
+if previously_logged_events_1920_df.empty == True:
+	events_1920_df.to_sql("events_1920", con=conn, if_exists="replace")
+	updated_events_1920_df = events_1920_df
+else:
+	indexList = []
+	for i in range(len(events_1920_df)):
+		eventKey = events_1920_df.loc[i, "event_key"]
+		if eventKey not in previously_logged_events_1920_df.event_key.values:
+			indexList.append(i)
+		else:
+			indexList.append(i)
 
-indexList = []
-for i in range(len(events_1920_df)):
-	eventKey = events_1920_df.loc[i, "event_key"]
-	if eventKey not in previously_logged_events_1920_df.event_key.values:
-		indexList.append(i)
 
-updated_events_1920_df = previously_logged_events_1920_df
-for i in indexList:
-	updated_events_1920_df.append(events_1920_df.loc[i])
+	updated_events_1920_df = previously_logged_events_1920_df
+	for i in indexList:
+		updated_events_1920_df.append(events_1920_df.loc[i])
 
 
-updated_events_1920_df = updated_events_1920_df.sort_values("start_date")
-updated_events_1920_df = updated_events_1920_df.reset_index()
-updated_events_1920_df = updated_events_1920_df.drop(columns=["index"])
-updated_events_1920_df = updated_events_1920_df.drop(columns=["level_0"])
+	updated_events_1920_df = updated_events_1920_df.sort_values("start_date")
+	updated_events_1920_df = updated_events_1920_df.reset_index()
+	updated_events_1920_df = updated_events_1920_df.drop(columns=["index"])
+	try:
+		updated_events_1920_df = updated_events_1920_df.drop(columns=["level_0"])
+	except:
+		pass
 
-updated_events_1920_df.to_sql("events_1920", con=conn, if_exists="replace")
+	updated_events_1920_df.to_sql("events_1920", con=conn, if_exists="replace")
 
-#STILL NEED TO DO: FIGURE OUT WHICH EVENTS TODAY + FUTURE HAVE ALL GAMES SCHEDULED &&&& MAKE DF OF MATCHES NOT PREVIOUSLY IN THE SQL DB
+#STILL NEED TO DO: FIGURE OUT WHICH EVENTS TODAY + FUTURE HAVE ALL GAMES SCHEDULED
+
+# for i in future_events_1920_df["event_key"]:
+
+
 
 
 conn.close()
